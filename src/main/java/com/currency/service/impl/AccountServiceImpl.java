@@ -1,28 +1,39 @@
 package com.currency.service.impl;
 
+import com.currency.client.CurrencyApiClient;
 import com.currency.dto.AccountDTO;
 import com.currency.dto.UserDTO;
 import com.currency.entity.Account;
 import com.currency.entity.User;
+import com.currency.enums.Base;
 import com.currency.repository.AccountRepository;
 import com.currency.service.AccountService;
 import com.currency.service.UserService;
 import com.currency.util.MapperUtil;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
 public class AccountServiceImpl implements AccountService {
+
+    @Value("${access_key}")
+    private String access_key;
     private final AccountRepository accountRepository;
     private final UserService userService;
     private final MapperUtil mapperUtil;
+    private final CurrencyApiClient client;
 
-    public AccountServiceImpl(AccountRepository accountRepository, UserService userService, MapperUtil mapperUtil) {
+    public AccountServiceImpl(AccountRepository accountRepository, UserService userService, MapperUtil mapperUtil, CurrencyApiClient client) {
         this.accountRepository = accountRepository;
         this.userService = userService;
         this.mapperUtil = mapperUtil;
+        this.client = client;
     }
 
 
@@ -34,10 +45,51 @@ public class AccountServiceImpl implements AccountService {
                 .stream().map(account -> {
                     AccountDTO accountDTO= mapperUtil.convert(account,new AccountDTO());
                     accountDTO.setUsername(username);
+                    /// add currency information
+                    Map<String, BigDecimal> otherCurrencies= new HashMap<>();
+
+                accountDTO.setOtherCurrencies(getAllCurrenciesByBalance(accountDTO.getBalance()));
+
+
                     return accountDTO;
                 })
                 .collect(Collectors.toList());
     }
+
+
+
+
+
+    private Map<String, BigDecimal> getAllCurrenciesByBalance(BigDecimal balance){
+        Map<String, BigDecimal> allCurrencies=client.getAllCurrencies(access_key).getRates();
+        Map<String, BigDecimal> otherCurrencies= new HashMap<>();
+
+        otherCurrencies=allCurrencies.entrySet().stream().collect(Collectors.toMap(
+                Map.Entry :: getKey,
+                entry -> balance.multiply(entry.getValue())
+        ));
+
+
+        return otherCurrencies;
+    }
+
+    private Map<String, BigDecimal> getSelectedCurrenciesByBalance(BigDecimal balance, List<String> currencies){
+        Map<String, BigDecimal> allCurrencies=client.getSelectedCurrencies(access_key,currencies).getRates();
+        Map<String, BigDecimal> otherCurrencies= new HashMap<>();
+
+        otherCurrencies=allCurrencies.entrySet().stream().collect(Collectors.toMap(
+                Map.Entry :: getKey,
+                entry -> balance.multiply(entry.getValue())
+        ));
+
+
+        return otherCurrencies;
+    }
+
+
+
+
+
 
     private Long generateAccountNumber(){
         return (long) (Math.random()*100000000000L);
